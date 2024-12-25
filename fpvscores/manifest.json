@@ -1,12 +1,12 @@
 {
-    "name": "FPVScores",
+    "name": "FPVScores Sync",
     "author": "FPVScores",
     "author_uri": "https://fpvscores.com",
     "description": "Upload lap times and leaderboards to the cloud. See https://fpvscores.com for more information.",
     "info_uri": "https://github.com/FPVScores/FPVScores/",
     "license": "FPVScores",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
-    "version": "1.2",
+    "version": "2.0.0.beta",
     "required_rhapi_version": "1.0",
     "update_uri": null,
     "text_domain": null
