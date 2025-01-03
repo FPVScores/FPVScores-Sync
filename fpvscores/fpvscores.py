@@ -348,7 +348,7 @@ class FPVScores():
         headers = {'Authorization' : 'rhconnect', 'Accept' : 'application/json', 'Content-Type' : 'application/json'}
         r = requests.post(url, data=json_data, headers=headers)
         self.UI_Message(rhapi,r.text)
-        #print(r.text)
+        print(r.text)
 
     def runDownloadAvatarsBtn(args):
         print('run download avatars by frontend button')

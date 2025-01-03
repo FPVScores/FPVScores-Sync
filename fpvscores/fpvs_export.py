@@ -3,6 +3,8 @@ import logging
 from data_export import DataExporter
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy import inspect
+import re
+
 
 class FPVSExport():
 
@@ -46,17 +48,18 @@ class FPVSExport():
         return payload
     
 
-    def assemble_pilots_complete(self,rhapi):
+
+    def assemble_pilots_complete(self, rhapi):
         payload = rhapi.db.pilots
         for pilot in payload:
-            pilot.fpvsuuid = rhapi.db.pilot_attribute_value(pilot.id, 'fpvs_uuid')
-            pilot.country = rhapi.db.pilot_attribute_value(pilot.id, 'country')
+            pilot.fpvsuuid = self.sanitize_input(rhapi.db.pilot_attribute_value(pilot.id, 'fpvs_uuid'))
+            pilot.country = self.sanitize_input(rhapi.db.pilot_attribute_value(pilot.id, 'country'))
+            self.sanitize_pilot_attributes(pilot)
         return payload
 
 
     def assemble_heatnodes_complete(self,rhapi):
-        payload = rhapi.db.slots
-        
+        payload = rhapi.db.slots      
         freqs = json.loads(rhapi.race.frequencyset.frequencies)
         
         for slot in payload:
@@ -71,6 +74,19 @@ class FPVSExport():
             
         return payload
 
+
+    def sanitize_input(self, value):
+        if isinstance(value, str):
+            original_value = value
+            sanitized = re.sub(r"[\"';\-#]", "", value)
+            sanitized = re.sub(r"[^\w\s\-]", "", sanitized)
+            self.logger.debug(f"Sanitizing input: Original: {original_value}, Sanitized: {sanitized}")
+            return sanitized.strip()
+        return value
+    
+    def sanitize_pilot_attributes(self, pilot):
+        for key, value in pilot.__dict__.items():
+            pilot.__dict__[key] = self.sanitize_input(value)
 
 class AlchemyEncoder(json.JSONEncoder):
     def default(self, obj):  #pylint: disable=arguments-differ
@@ -99,3 +115,6 @@ class AlchemyEncoder(json.JSONEncoder):
             return fields
 
         return json.JSONEncoder.default(self, obj)
+    
+
+    
