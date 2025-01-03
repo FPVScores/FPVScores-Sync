@@ -75,12 +75,14 @@ class FPVSExport():
         return payload
 
 
+
     def sanitize_input(self, value):
         if isinstance(value, str):
             original_value = value
-            sanitized = re.sub(r"[\"';\-#]", "", value)
-            sanitized = re.sub(r"[^\w\s\-]", "", sanitized)
-            self.logger.debug(f"Sanitizing input: Original: {original_value}, Sanitized: {sanitized}")
+            # Verwijder gevaarlijke tekens behalve '#'
+            sanitized = re.sub(r"[\"';\-]", "", value)  # Verwijder specifieke gevaarlijke tekens
+            sanitized = re.sub(r"[^\w\s\-\#]", "", sanitized)  # Sta #, letters, cijfers, spaties en - toe
+            print(f"Sanitizing input: Original: {original_value}, Sanitized: {sanitized}")
             return sanitized.strip()
         return value
     
