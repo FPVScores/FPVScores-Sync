@@ -70,8 +70,9 @@ class FPVScores():
         fields.register_pilot_attribute( UIField('safetycheck', "Safety Checked", UIFieldType.CHECKBOX) )
         fields.register_pilot_attribute( UIField('fpvs_uuid', "FPVS Pilot UUID", UIFieldType.TEXT) )
         fields.register_pilot_attribute( UIField('comm_elrs', "ELRS Passphrase", UIFieldType.TEXT) )
-        fields.register_pilot_attribute( UIField('comm_fusion', "Fusion Mac", UIFieldType.TEXT) )
-        
+        fields.register_pilot_attribute( UIField('comm_tbs_mac', "Fusion MAC Address", UIFieldType.TEXT) )
+    
+
         #ui.register_quickbutton("fpvscores_sync", "fpvscores_downloadavatars", "Download Pilot Avatars", self.runDownloadAvatarsBtn, {'rhapi': self._rhapi})
 
     def isConnected(self):
