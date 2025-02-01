@@ -75,14 +75,13 @@ class FPVSExport():
         return payload
 
 
-
     def sanitize_input(self, value):
         if isinstance(value, str):
             original_value = value
             # Verwijder gevaarlijke tekens behalve '#'
             sanitized = re.sub(r"[\"';\-]", "", value)  # Verwijder specifieke gevaarlijke tekens
             sanitized = re.sub(r"[^\w\s\-\#]", "", sanitized)  # Sta #, letters, cijfers, spaties en - toe
-            print(f"Sanitizing input: Original: {original_value}, Sanitized: {sanitized}")
+            #print(f"Sanitizing input: Original: {original_value}, Sanitized: {sanitized}")
             return sanitized.strip()
         return value
     
@@ -117,6 +116,6 @@ class AlchemyEncoder(json.JSONEncoder):
             return fields
 
         return json.JSONEncoder.default(self, obj)
-    
+
 
     

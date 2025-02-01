@@ -505,15 +505,15 @@ class FPVScores():
                                 "last_lap_raw": result["last_lap_raw"],
                                 "average_lap": result["average_lap"],
                                 "fastest_lap": result["fastest_lap"],
-                                "fastest_lap_source_round": result.get("fastest_lap_source", {}).get("round", ''),
-                                "consecutives_source_round": result.get("consecutives_source", {}).get("round", ''),
+                                "fastest_lap_source_round": (result.get("fastest_lap_source") or {}).get("round", ''),
+                                "consecutives_source_round": (result.get("consecutives_source") or {}).get("round", ''),
                                 "total_time_raw": result["total_time_raw"],
                                 "total_time_laps_raw": result["total_time_laps_raw"],
                                 "average_lap_raw": result["average_lap_raw"],
-                                "fastest_lap_source_heat": result.get("fastest_lap_source", {}).get("heat", ''),
-                                "fastest_lap_source_displayname": result.get("fastest_lap_source", {}).get("displayname", ''),
-                                "consecutives_source_heat": result.get("consecutives_source", {}).get("heat", ''),
-                                "consecutives_source_displayname": result.get("consecutives_source", {}).get("displayname", ''),
+                                "fastest_lap_source_heat": (result.get("fastest_lap_source") or {}).get("heat", ''),
+                                "fastest_lap_source_displayname": (result.get("fastest_lap_source") or {}).get("displayname", ''),
+                                "consecutives_source_heat": (result.get("consecutives_source") or {}).get("heat", ''),
+                                "consecutives_source_displayname": (result.get("consecutives_source") or {}).get("displayname", ''),
                                 "consecutives_lap_start": result.get("consecutive_lap_start", ''),
                                 "method_label": leaderboard  # Noteer welk leaderboard gebruikt is
                             }
@@ -540,27 +540,29 @@ class FPVScores():
 
 
 class AlchemyEncoder(json.JSONEncoder):
-    def default(self, obj):
-        custom_vars = [
-            'fpvsuuid', 'country', 'node_frequency_band',
-            'node_frequency_c', 'node_frequency_f', 'display_name'
-        ]
+    def default(self, obj):  #pylint: disable=arguments-differ
+        custom_vars = ['fpvsuuid','country','node_frequency_band','node_frequency_c','node_frequency_f', 'display_name']
         if isinstance(obj.__class__, DeclarativeMeta):
-            # SQLAlchemy object
+            # an SQLAlchemy class
             mapped_instance = inspect(obj)
             fields = {}
-            for field in mapped_instance.attrs.keys():
-                try:
-                    value = getattr(obj, field)
-                    json.dumps(value)  # Test if serializable
-                    fields[field] = value
-                except TypeError:
-                    fields[field] = None
+            for field in dir(obj): 
+                if field in [*mapped_instance.attrs.keys(), *custom_vars]:
+                    data = obj.__getattribute__(field)
+                    if field != 'query' \
+                        and field != 'query_class':
+                        try:
+                            json.dumps(data) # this will fail on non-encodable values, like other classes
+                            if field == 'frequencies':
+                                fields[field] = json.loads(data)
+                            elif field == 'enter_ats' or field == 'exit_ats':
+                                fields[field] = json.loads(data)
+                            else:
+                                fields[field] = data
+                        except TypeError:
+                            fields[field] = None
 
-            # Voeg alleen custom velden toe als ze bestaan op het object
-            for custom_field in custom_vars:
-                if hasattr(obj, custom_field):
-                    fields[custom_field] = getattr(obj, custom_field, None)
-
+            # a json-encodable dict
             return fields
-        return super().default(obj)
+
+        return json.JSONEncoder.default(self, obj)
