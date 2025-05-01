@@ -114,6 +114,7 @@ class FPVScores():
                 classname = "Class " + str(classid)
                 brackettype = "none"
                 classdescription = "No description"
+                primary_leaderboard = None
 
             elif eventname == "classAlter":
                 classid = args["class_id"]
@@ -121,6 +122,16 @@ class FPVScores():
                 classname = raceclass.name
                 classdescription = raceclass.description
                 brackettype = "check"
+                
+                # Get the primary ranking method for this class
+                primary_leaderboard = None
+                if hasattr(raceclass, 'ranking_method'):
+                    primary_leaderboard = raceclass.ranking_method
+                elif hasattr(raceclass, 'results'):
+                    # Try to determine from results if ranking_method not available
+                    results = raceclass.results
+                    if results and 'meta' in results:
+                        primary_leaderboard = results['meta'].get('primary_leaderboard')
 
             elif eventname == "heatGenerate":
                 classid = args["output_class_id"]
@@ -131,6 +142,16 @@ class FPVScores():
                     classname = raceclass.name
                 classdescription = raceclass.description
                 brackettype = self.get_brackettype(args)
+                
+                # Get the primary ranking method for this class
+                primary_leaderboard = None
+                if hasattr(raceclass, 'ranking_method'):
+                    primary_leaderboard = raceclass.ranking_method
+                elif hasattr(raceclass, 'results'):
+                    # Try to determine from results if ranking_method not available
+                    results = raceclass.results
+                    if results and 'meta' in results:
+                        primary_leaderboard = results['meta'].get('primary_leaderboard')
 
             payload = {
                 "event_uuid": keys["event_uuid"],
@@ -138,11 +159,12 @@ class FPVScores():
                 "class_name": classname,
                 "class_descr": classdescription,
                 "class_bracket_type": brackettype,
-                "event_name": eventname
+                "event_name": eventname,
+                "primary_leaderboard": primary_leaderboard
             }
             x = requests.post(self.FPVS_API_ENDPOINT+"/rh/"+self.FPVS_API_VERSION+"/?action=class_update", json = payload)
+            
             self.UI_Message(rhapi,x.text)
-
 
         else:
             self.logger.warning("FPVScores.com Sync Disabled")
@@ -175,10 +197,30 @@ class FPVScores():
     def heat_listener(self,args):
         rhapi = self._rhapi
         keys = self.getEventUUID()
-        if self.isConnected() and self.isEnabled() and keys["notempty"]:
+        if not self.isConnected() or not self.isEnabled() or not keys["notempty"]:
+            self.logger.warning("FPVScores.com Sync Disabled")
+            return
 
-            db = self._rhapi.db
-            heat = db.heat_by_id(args["heat_id"])
+        # Get event name and determine which field to use for heat_id
+        event_name = args.get("_eventName", "")
+        heat_id = None
+
+        if event_name == "heatGenerate":
+            heat_id = args.get("output_heat_id")
+        else:  # For HEAT_ALTER and other events
+            heat_id = args.get("heat_id")
+
+        if heat_id is None:
+            self.logger.warning(f"No heat_id found in event arguments for event {event_name}")
+            return
+
+        db = self._rhapi.db
+        try:
+            heat = db.heat_by_id(heat_id)
+            if heat is None:
+                self.logger.warning(f"Heat with ID {heat_id} not found")
+                return
+
             groups = []
             thisheat = self.getGroupingDetails(heat,db)
             groups.append(thisheat)
@@ -190,9 +232,8 @@ class FPVScores():
             x = requests.post(self.FPVS_API_ENDPOINT+"/rh/"+self.FPVS_API_VERSION+"/?action=heat_update", json = payload)
             self.UI_Message(rhapi,x.text)
 
-
-        else:
-            self.logger.warning("FPVScores.com Sync Disabled")
+        except Exception as e:
+            self.logger.error(f"Error processing heat update: {str(e)}")
 
     def class_delete(self,args):
         rhapi = self._rhapi
@@ -420,72 +461,87 @@ class FPVScores():
         rhapi = self._rhapi
         keys = self.getEventUUID()
 
+        if not self.isConnected() or not self.isEnabled() or not keys["notempty"]:
+            self.logger.warning("No internet connection available")
+            return
+
+        # First process lap times
         self.laptime_listener(args)
+        
+        # Get race and class info
         savedracemeta = self._rhapi.db.race_by_id(args["race_id"])
         classid = savedracemeta.class_id
-  
         raceclass = self._rhapi.db.raceclass_by_id(classid)
         classname = raceclass.name
+        
+        # Get the primary ranking method for this class
+        primary_ranking = None
+        if hasattr(raceclass, 'ranking_method'):
+            primary_ranking = raceclass.ranking_method
+        elif hasattr(raceclass, 'results'):
+            # Try to determine from results if ranking_method not available
+            results = raceclass.results
+            if results and 'meta' in results:
+                primary_ranking = results['meta'].get('primary_leaderboard')
+        
+        # Initialize payloads
+        rankpayload = []
+        resultpayload = []
+
+        # Process rankings if available
         ranking = raceclass.ranking
-        if self.isConnected() and self.isEnabled() and keys["notempty"]:
+        if ranking is not None and not isinstance(ranking, bool):
+            try:
+                meta = ranking["meta"]
+                method_label = meta["method_label"]
+                ranks = ranking["ranking"]
 
-            rankpayload = []
-            resultpayload = []
+                for rank in ranks:
+                    # Skip pilots with no data (position 0)
+                    if rank.get("position", 0) == 0:
+                        continue
 
-            if ranking != None:
-                if isinstance(ranking, bool) and ranking is False:
+                    # Create a copy to avoid modifying original
+                    rank_values = rank.copy()
 
-                    rankpayload = []
+                    # Extract and remove specific fields
+                    pilot_id = rank_values.pop("pilot_id", None)
+                    callsign = rank_values.pop("callsign", None)
+                    position = rank_values.pop("position", None)
+                    team_name = rank_values.pop("team_name", None)
+                    node = rank_values.pop("node", None)
+                    total_time_laps = rank_values.pop("total_time_laps", None)
 
-                else:
+                    # Create pilot ranking entry
+                    pilot = {
+                        "classid": classid,
+                        "classname": classname,
+                        "pilot_id": pilot_id,
+                        "callsign": callsign,
+                        "position": position,
+                        "team_name": team_name,
+                        "node": node,
+                        "method_label": method_label,
+                        "rank_fields": meta["rank_fields"],
+                        "rank_values": rank_values
+                    }
+                    rankpayload.append(pilot)
+            except Exception as e:
+                self.logger.warning(f"Error processing rankings: {str(e)}")
 
-                    meta = ranking["meta"]
-                    method_label = meta["method_label"]
-                    ranks = ranking["ranking"]
-
-                    for rank in ranks:
-                        # Specifieke waardes ophalen en verwijderen uit rank
-                        rank_values = rank.copy()  # Maak een kopie om originele data niet te overschrijven
-
-                        pilot_id = rank_values.pop("pilot_id", None)
-                        callsign = rank_values.pop("callsign", None)
-                        position = rank_values.pop("position", None)
-                        team_name = rank_values.pop("team_name", None)
-                        node = rank_values.pop("node", None)
-                        total_time_laps = rank_values.pop("total_time_laps", None)
-
-                        # heat = rank_values.pop("heat", None)  # Uncomment als 'heat' wordt gebruikt
-
-                        # Maak het pilot-dict
-                        pilot = {
-                            "classid": classid,
-                            "classname": classname,
-                            "pilot_id": pilot_id,
-                            "callsign": callsign,
-                            "position": position,
-                            "team_name": team_name,
-                            "node": node,
-                            # "heat": heat,  # Uncomment als 'heat' wordt gebruikt
-                            "method_label": method_label,
-                            "rank_fields": meta["rank_fields"],
-                            "rank_values": rank_values,  # Hier blijven alleen de overgebleven waardes over
-                        }
-
-                        # Debug output (indien nodig)
-                        print(pilot)
-
-                        # Toevoegen aan rankpayload
-                        rankpayload.append(pilot)    
-
-            db = self._rhapi.db    
-            fullresults = db.raceclass_results(classid)
-            if fullresults is not None:
-                meta = fullresults["meta"]
+        # Process full results
+        db = self._rhapi.db    
+        fullresults = db.raceclass_results(classid)
+        if fullresults is not None:
+            try:
                 leaderboards = ["by_consecutives", "by_race_time", "by_fastest_lap"]
-
                 for leaderboard in leaderboards:
                     if leaderboard in fullresults:
                         for result in fullresults[leaderboard]:
+                            # Skip pilots with no data (position 0 or no laps)
+                            if result.get("position", 0) == 0 or result.get("laps", 0) == 0:
+                                continue
+
                             pilot = {
                                 "classid": classid,
                                 "classname": classname,
@@ -515,27 +571,29 @@ class FPVScores():
                                 "consecutives_source_heat": (result.get("consecutives_source") or {}).get("heat", ''),
                                 "consecutives_source_displayname": (result.get("consecutives_source") or {}).get("displayname", ''),
                                 "consecutives_lap_start": result.get("consecutive_lap_start", ''),
-                                "method_label": leaderboard  # Noteer welk leaderboard gebruikt is
+                                "method_label": leaderboard,
+                                "is_primary": leaderboard == primary_ranking if primary_ranking else False
                             }
                             resultpayload.append(pilot)
 
-                payload = {
-                    "event_uuid": keys["event_uuid"],
-                    "ranking": rankpayload,
-                    "results": resultpayload,
-                    "classid": classid
-                }
-                x = requests.post(self.FPVS_API_ENDPOINT+"/rh/"+self.FPVS_API_VERSION+"/?action=leaderboard_update", json = payload)
-                print(x.text)
-                self.UI_Message(rhapi,x.text)
-
-                self.logger.info("Results sent to cloud")
-
-            else:
-                self.logger.info("No results available to resync")
-
+                # Only send if we have valid results
+                if rankpayload or resultpayload:
+                    payload = {
+                        "event_uuid": keys["event_uuid"],
+                        "ranking": rankpayload,
+                        "results": resultpayload,
+                        "classid": classid,
+                        "primary_ranking": primary_ranking
+                    }
+                    x = requests.post(self.FPVS_API_ENDPOINT+"/rh/"+self.FPVS_API_VERSION+"/?action=leaderboard_update", json = payload)
+                    self.UI_Message(rhapi,x.text)
+                    self.logger.info("Results sent to cloud")
+                else:
+                    self.logger.info("No valid results to sync")
+            except Exception as e:
+                self.logger.error(f"Error processing results: {str(e)}")
         else:
-            self.logger.warning("No internet connection available")
+            self.logger.info("No results available to resync")
 
 
 
