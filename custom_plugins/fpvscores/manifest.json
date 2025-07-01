@@ -8,6 +8,5 @@
     "license": "FPVScores",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
     "version": "2.0.0",
-    "required_rhapi_version": "1.0",
-    "category": ["Race Management"]
+    "required_rhapi_version": "1.0"
 }
