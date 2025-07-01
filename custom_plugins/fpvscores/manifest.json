@@ -7,6 +7,6 @@
     "info_uri": "https://github.com/FPVScores/FPVScores/",
     "license": "FPVScores",
     "license_uri": "https://github.com/RotorHazard/RotorHazard/blob/main/LICENSE",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "required_rhapi_version": "1.0"
 }
